@@ -255,7 +255,7 @@ export default function SummaryPage({ params }: { params: Promise<{ id: string }
                 <span>Out: <strong>{out}</strong></span>
                 <span>Back: <strong>{back}</strong></span>
                 {waste > 0 && (
-                  <span style={{ color: '#D97706' }}>Damaged: <strong>{waste}</strong></span>
+                  <span style={{ color: '#D97706' }}>Leakers: <strong>{waste}</strong></span>
                 )}
                 <span style={{ color: sold >= 0 ? '#16A34A' : '#DC2626' }}>
                   Sold: <strong>{sold}</strong>

@@ -269,7 +269,7 @@ export default function ClipboardsPage() {
                           <span style={{ color: '#57534E' }}>Out: <strong>{out}</strong></span>
                           <span style={{ color: '#57534E' }}>Back: <strong>{back}</strong></span>
                           {waste > 0 && (
-                            <span style={{ color: '#F59E0B', fontSize: 13 }}>Damaged: <strong>{waste}</strong></span>
+                            <span style={{ color: '#F59E0B', fontSize: 13 }}>Leakers: <strong>{waste}</strong></span>
                           )}
                           <span style={{ color: '#16A34A' }}>Sold: <strong>{sold}</strong></span>
                         </div>

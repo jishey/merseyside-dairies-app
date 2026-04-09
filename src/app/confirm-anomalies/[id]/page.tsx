@@ -106,7 +106,7 @@ export default function ConfirmAnomaliesPage({ params }: { params: Promise<{ id:
     // Clean up sessionStorage
     sessionStorage.removeItem(`anomalies-${milkmanId}`)
 
-    router.push('/')
+    router.push(`/headed-out/${milkmanId}`)
   }
 
   const handleGoBack = () => {

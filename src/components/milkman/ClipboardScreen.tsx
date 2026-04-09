@@ -91,14 +91,15 @@ export default function ClipboardScreen({
             marginTop: -8,
             minHeight: '80vh',
             position: 'relative',
+            overflow: 'visible',
             backgroundImage:
               'radial-gradient(ellipse at 20% 50%, rgba(255,248,230,0.6) 0%, transparent 50%),' +
               'radial-gradient(ellipse at 80% 20%, rgba(255,245,220,0.4) 0%, transparent 50%)',
           }}
           className="screen-fade"
         >
-          {/* Folded corner */}
-          <div
+          {/* Folded corner — FLIP */}
+          <button
             onClick={onFlip}
             style={{
               position: 'absolute',
@@ -106,27 +107,36 @@ export default function ClipboardScreen({
               right: 0,
               width: 48,
               height: 48,
-              background: 'linear-gradient(135deg, #F5E6D3, #E8DCC8)',
-              clipPath: 'polygon(100% 0, 0 0, 100% 100%)',
+              background: 'none',
+              border: 'none',
               cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              padding: 0,
               zIndex: 20,
             }}
           >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 800,
-                color: '#92400E',
-                transform: 'rotate(45deg) translateX(8px)',
-                whiteSpace: 'nowrap',
-              }}
-            >
+            <svg width="48" height="48" viewBox="0 0 48 48">
+              <path d="M48 0 L48 48 L0 0 Z" fill="#E8DCC8" />
+              <path d="M48 0 L48 48 L0 0 Z" fill="url(#fold)" opacity="0.3" />
+              <path d="M12 0 L48 0 L48 36 Z" fill="none" stroke="#D4C8A8" strokeWidth="1" />
+              <defs>
+                <linearGradient id="fold" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stopColor="#000" stopOpacity="0.1" />
+                  <stop offset="1" stopColor="#000" stopOpacity="0.3" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <span style={{
+              position: 'absolute',
+              top: 6,
+              right: 4,
+              fontSize: 10,
+              color: '#92400E',
+              fontWeight: 800,
+              transform: 'rotate(45deg)',
+            }}>
               FLIP
-            </div>
-          </div>
+            </span>
+          </button>
 
           {/* Header */}
           <div style={{ marginBottom: 20, paddingRight: 48 }}>
@@ -149,27 +159,30 @@ export default function ClipboardScreen({
           {/* Morning/Afternoon toggle */}
           <div style={{
             display: 'flex',
-            gap: 0,
-            marginBottom: 24,
-            borderRadius: 12,
-            overflow: 'hidden',
-            border: '2px solid #E2E8F0',
+            gap: 10,
+            marginBottom: 22,
+            background: '#FBF9F4',
+            borderRadius: 14,
+            padding: 3,
           }}>
             <button
               onClick={() => onModeChange(false)}
               style={{
                 flex: 1,
                 padding: '12px 0',
-                fontSize: 15,
+                borderRadius: 11,
                 fontWeight: 800,
+                fontSize: 16,
                 border: 'none',
-                background: !afternoonMode ? '#2563EB' : '#fff',
-                color: !afternoonMode ? '#fff' : '#64748B',
                 cursor: 'pointer',
+                letterSpacing: '-0.01em',
+                background: !afternoonMode ? '#fff' : 'transparent',
+                color: !afternoonMode ? '#1E3A5F' : '#78716C',
                 transition: 'all 0.2s',
+                boxShadow: !afternoonMode ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
               }}
             >
-              Taking Out
+              Morning Load
             </button>
             <button
               onClick={() => hasData && onModeChange(true)}
@@ -177,13 +190,16 @@ export default function ClipboardScreen({
               style={{
                 flex: 1,
                 padding: '12px 0',
-                fontSize: 15,
+                borderRadius: 11,
                 fontWeight: 800,
+                fontSize: 16,
                 border: 'none',
-                background: afternoonMode ? '#2563EB' : '#fff',
-                color: afternoonMode ? '#fff' : (hasData ? '#64748B' : '#CBD5E1'),
-                cursor: hasData ? 'pointer' : 'default',
+                cursor: hasData ? 'pointer' : 'not-allowed',
+                background: afternoonMode ? '#fff' : 'transparent',
+                color: !hasData ? '#D1D5DB' : (afternoonMode ? '#1E3A5F' : '#78716C'),
                 transition: 'all 0.2s',
+                boxShadow: afternoonMode ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                opacity: hasData ? 1 : 0.5,
               }}
             >
               Back from Round
@@ -227,101 +243,101 @@ export default function ClipboardScreen({
                       {product.size}
                     </p>
                   </div>
-                </div>
-
-                {/* TAKING OUT */}
-                <div style={{ marginBottom: afternoonMode && productData.out > 0 ? 16 : 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-                    <label style={{ fontSize: 14, fontWeight: 800, color: '#57534E', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Taking Out
-                    </label>
-                    {isEdited && (
-                      <span style={{
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: '#fff',
-                        background: '#DC2626',
-                        padding: '2px 8px',
-                        borderRadius: 4,
-                        marginLeft: 8,
-                      }}>
-                        EDITED
-                      </span>
-                    )}
-                  </div>
-
-                  <Stepper
-                    value={productData.out}
-                    onChange={(v) => onDataChange(product.id, 'out', v)}
-                  />
-
-                  {isEdited && morningValue !== undefined && (
-                    <p style={{
-                      fontSize: 13,
-                      color: '#DC2626',
-                      fontStyle: 'italic',
-                      fontWeight: 600,
-                      margin: '6px 0 0',
+                  {isEdited && (
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: '#fff',
+                      background: '#DC2626',
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      marginLeft: 'auto',
                     }}>
-                      Was {morningValue} this morning
-                    </p>
+                      EDITED
+                    </span>
                   )}
                 </div>
 
-                {/* Morning mode anomaly warning */}
-                {!afternoonMode && isAnom && anomaly && (
-                  <div style={{
-                    background: '#FFF7ED',
-                    borderRadius: 8,
-                    border: '1px solid #FBBF24',
-                    padding: '10px 12px',
-                    marginTop: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                      <AlertTriangle size={14} color="#D97706" style={{ flexShrink: 0 }} />
-                      <span style={{ fontSize: 14, fontWeight: 600, color: '#92400E' }}>
-                        Avg ~{anomaly.avg} on {anomaly.dayName}s (last 4 weeks)
-                      </span>
+                {/* MORNING MODE: Taking Out stepper + anomaly warning */}
+                {!afternoonMode && (
+                  <>
+                    <div>
+                      <label style={{ fontSize: 14, fontWeight: 800, color: '#57534E', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 12 }}>
+                        Taking Out
+                      </label>
+                      <Stepper
+                        value={productData.out}
+                        onChange={(v) => onDataChange(product.id, 'out', v)}
+                      />
                     </div>
-                    <button
-                      onClick={() => confirmAnomaly(product.id)}
-                      style={{
-                        padding: '8px 14px',
+
+                    {isAnom && anomaly && (
+                      <div style={{
+                        background: '#FFF7ED',
                         borderRadius: 8,
-                        border: '2px solid #F59E0B',
-                        background: '#FEF3C7',
-                        fontWeight: 700,
-                        fontSize: 13,
-                        color: '#92400E',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                      }}
-                    >
-                      That&apos;s right
-                    </button>
-                  </div>
+                        border: '1px solid #FBBF24',
+                        padding: '10px 12px',
+                        marginTop: 12,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                          <AlertTriangle size={14} color="#D97706" style={{ flexShrink: 0 }} />
+                          <span style={{ fontSize: 14, fontWeight: 600, color: '#92400E' }}>
+                            Avg ~{anomaly.avg} on {anomaly.dayName}s (last 4 weeks)
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => confirmAnomaly(product.id)}
+                          style={{
+                            padding: '8px 14px',
+                            borderRadius: 8,
+                            border: '2px solid #F59E0B',
+                            background: '#FEF3C7',
+                            fontWeight: 700,
+                            fontSize: 13,
+                            color: '#92400E',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          That&apos;s right
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
 
-                {/* Afternoon fields */}
+                {/* AFTERNOON MODE: Brought Back + Leakers only (no Taking Out) */}
                 {afternoonMode && productData.out === 0 && (
                   <p style={{
                     fontSize: 14,
                     color: '#9CA3AF',
                     fontStyle: 'italic',
                     fontWeight: 500,
-                    marginTop: 10,
+                    margin: 0,
                   }}>
-                    Nothing taken out — nothing to bring back
+                    Nothing taken out -- nothing to bring back
                   </p>
                 )}
 
                 {afternoonMode && productData.out > 0 && (
                   <>
+                    {isEdited && morningValue !== undefined && (
+                      <p style={{
+                        fontSize: 13,
+                        color: '#DC2626',
+                        fontStyle: 'italic',
+                        fontWeight: 600,
+                        margin: '0 0 12px',
+                      }}>
+                        Was {morningValue} this morning
+                      </p>
+                    )}
+
                     {/* BROUGHT BACK */}
                     <label style={{ fontSize: 14, fontWeight: 800, color: '#57534E', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 12 }}>
                       Brought Back
@@ -332,11 +348,11 @@ export default function ClipboardScreen({
                       max={productData.out}
                     />
 
-                    {/* DAMAGED / LOST */}
+                    {/* LEAKERS */}
                     {productData.out - productData.back > 0 && (
                       <div style={{ marginTop: 16 }}>
                         <label style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 12 }}>
-                          Damaged / Lost
+                          Leakers
                         </label>
                         <Stepper
                           value={productData.waste}
@@ -366,7 +382,7 @@ export default function ClipboardScreen({
                 onClick={onSubmit}
                 color="#16A34A"
               >
-                End of Day — Submit
+                End of Day -- Submit
               </Btn>
             )}
           </div>

@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import WelcomeScreen from '@/components/milkman/WelcomeScreen'
 import PinEntry from '@/components/milkman/PinEntry'
-import SetupWizard from '@/components/milkman/SetupWizard'
 import { createClient } from '@/lib/supabase/client'
 import { dateStr } from '@/lib/helpers/date'
 
-type Screen = 'welcome' | 'pin' | 'setup'
+type Screen = 'welcome' | 'pin'
 
 interface MilkmanData {
   id: string
@@ -76,34 +75,12 @@ export default function Home() {
     setScreen('pin')
   }
 
-  const handleNewMilkman = () => {
-    setScreen('setup')
-  }
-
   const handleAdminLogin = () => {
     router.push('/admin')
   }
 
   const handlePinCorrect = () => {
     router.push(`/clipboard/${selectedMilkmanId}`)
-  }
-
-  const handleSetupComplete = async (name: string, pin: string) => {
-    const maxOrder = milkmen.length > 0
-      ? Math.max(...milkmen.map(m => m.sort_order))
-      : 0
-
-    const { data, error } = await supabase
-      .from('milkmen')
-      .insert({ name, pin, sort_order: maxOrder + 1 })
-      .select('id')
-      .single()
-
-    if (error) {
-      return
-    }
-
-    router.push(`/clipboard/${data.id}`)
   }
 
   if (screen === 'pin' && selectedMilkmanId) {
@@ -118,22 +95,12 @@ export default function Home() {
     )
   }
 
-  if (screen === 'setup') {
-    return (
-      <SetupWizard
-        onBack={() => setScreen('welcome')}
-        onComplete={handleSetupComplete}
-      />
-    )
-  }
-
   return (
     <WelcomeScreen
       milkmen={milkmen}
       absences={absences}
       dayClosed={dayClosed}
       onSelectMilkman={handleSelectMilkman}
-      onNewMilkman={handleNewMilkman}
       onAdminLogin={handleAdminLogin}
     />
   )

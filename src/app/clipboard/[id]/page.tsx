@@ -279,7 +279,7 @@ export default function ClipboardPage({ params }: { params: Promise<{ id: string
     }
 
     await saveMorningSnapshot()
-    router.push('/')
+    router.push(`/headed-out/${milkmanId}`)
   }
 
   const handleSubmit = () => {

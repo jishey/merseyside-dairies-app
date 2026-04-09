@@ -241,7 +241,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                     <span>Out: <strong>{entry.out}</strong></span>
                     <span>Back: <strong>{entry.back}</strong></span>
                     {entry.waste > 0 && (
-                      <span style={{ color: '#F59E0B' }}>Damaged: <strong>{entry.waste}</strong></span>
+                      <span style={{ color: '#F59E0B' }}>Leakers: <strong>{entry.waste}</strong></span>
                     )}
                     <span style={{ color: '#16A34A' }}>Sold: <strong>{sold}</strong></span>
                   </div>

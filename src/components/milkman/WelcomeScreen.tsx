@@ -3,7 +3,6 @@
 import { User, AlertTriangle } from 'lucide-react'
 import Phone from '@/components/shared/Phone'
 import Page from '@/components/shared/Page'
-import Btn from '@/components/shared/Btn'
 import { formatDate, greeting } from '@/lib/helpers/date'
 
 export interface WelcomeScreenProps {
@@ -11,7 +10,6 @@ export interface WelcomeScreenProps {
   absences: Record<string, { coveringId?: string; coveringName?: string }>
   dayClosed: boolean
   onSelectMilkman: (id: string) => void
-  onNewMilkman: () => void
   onAdminLogin: () => void
 }
 
@@ -20,7 +18,6 @@ export default function WelcomeScreen({
   absences,
   dayClosed,
   onSelectMilkman,
-  onNewMilkman,
   onAdminLogin,
 }: WelcomeScreenProps) {
   return (
@@ -70,33 +67,22 @@ export default function WelcomeScreen({
         {dayClosed && (
           <div style={{
             background: '#FEE2E2',
-            border: '1px solid #FCA5A5',
+            border: '2px solid #FCA5A5',
             borderRadius: 12,
             padding: 16,
             marginBottom: 24,
             display: 'flex',
             gap: 12,
-            alignItems: 'flex-start',
+            alignItems: 'center',
           }}>
-            <AlertTriangle size={24} color="#DC2626" style={{ marginTop: 2, flexShrink: 0 }} />
-            <div>
-              <p style={{
-                fontSize: 16,
-                fontWeight: 800,
-                color: '#DC2626',
-                margin: 0,
-                letterSpacing: '-0.02em',
-              }}>
-                Today&apos;s round is closed
-              </p>
-              <p style={{
-                fontSize: 14,
-                color: '#991B1B',
-                margin: '4px 0 0',
-              }}>
-                Milkmen cannot access their clipboards.
-              </p>
-            </div>
+            <AlertTriangle size={24} color="#DC2626" style={{ flexShrink: 0 }} />
+            <span style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#DC2626',
+            }}>
+              Today&apos;s round is closed
+            </span>
           </div>
         )}
 
@@ -156,7 +142,7 @@ export default function WelcomeScreen({
                       color: '#64748B',
                       margin: '4px 0 0',
                     }}>
-                      Off today — covered by {absences[m.id].coveringName || 'John'}
+                      Off today -- covered by {absences[m.id].coveringName || 'John'}
                     </p>
                   )}
                 </div>
@@ -165,13 +151,7 @@ export default function WelcomeScreen({
           })}
         </div>
 
-        {/* Bottom buttons */}
-        <div style={{ marginBottom: 24 }}>
-          <Btn onClick={onNewMilkman} color="#2563EB" outline>
-            I&apos;m New Here
-          </Btn>
-        </div>
-
+        {/* Admin login */}
         <div style={{ textAlign: 'center', marginTop: 16 }}>
           <button
             onClick={onAdminLogin}

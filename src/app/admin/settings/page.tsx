@@ -24,6 +24,13 @@ interface MilkmanInfo {
   pin: string
 }
 
+interface PinResetState {
+  milkmanId: string | null
+  newPin: string
+  saving: boolean
+  success: string | null
+}
+
 interface AbsenceInfo {
   id: string
   milkman_id: string
@@ -43,6 +50,12 @@ export default function SettingsPage() {
   const [newName, setNewName] = useState('')
   const [newPin, setNewPin] = useState('')
   const [saving, setSaving] = useState(false)
+  const [pinReset, setPinReset] = useState<PinResetState>({
+    milkmanId: null,
+    newPin: '',
+    saving: false,
+    success: null,
+  })
 
   useEffect(() => {
     if (!authLoading && !isAdmin) router.push('/admin')
@@ -144,6 +157,16 @@ export default function SettingsPage() {
       .eq('id', absenceId)
     await loadData()
     setSaving(false)
+  }
+
+  const handleResetPin = async (milkmanId: string, newPin: string) => {
+    if (!/^\d{4}$/.test(newPin)) return
+    setPinReset((prev) => ({ ...prev, saving: true }))
+    const milkman = milkmen.find((m) => m.id === milkmanId)
+    await supabase.from('milkmen').update({ pin: newPin }).eq('id', milkmanId)
+    setPinReset({ milkmanId: null, newPin: '', saving: false, success: `PIN updated for ${milkman?.name || 'milkman'}` })
+    await loadData()
+    setTimeout(() => setPinReset((prev) => ({ ...prev, success: null })), 3000)
   }
 
   const handleLogout = () => {
@@ -381,6 +404,123 @@ export default function SettingsPage() {
             <Plus size={18} /> Add Milkman
           </button>
         )}
+
+        {/* PIN Management */}
+        <h2 style={{
+          fontSize: 20,
+          fontWeight: 800,
+          color: '#1E293B',
+          marginTop: 32,
+          marginBottom: 14,
+        }}>
+          Reset PINs
+        </h2>
+
+        {pinReset.success && (
+          <div style={{
+            background: '#DCFCE7',
+            border: '2px solid #86EFAC',
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 12,
+            fontSize: 14,
+            fontWeight: 700,
+            color: '#166534',
+            textAlign: 'center',
+          }}>
+            {pinReset.success}
+          </div>
+        )}
+
+        {milkmen.map((m) => (
+          <div
+            key={`pin-${m.id}`}
+            style={{
+              background: '#F8FAFC',
+              padding: '14px 16px',
+              borderRadius: 10,
+              border: '2px solid #E2E8F0',
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#1E293B' }}>
+              {m.name}
+            </span>
+
+            {pinReset.milkmanId === m.id ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  value={pinReset.newPin}
+                  onChange={(e) => setPinReset((prev) => ({ ...prev, newPin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                  placeholder="4 digits"
+                  maxLength={4}
+                  inputMode="numeric"
+                  style={{
+                    width: 80,
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    border: '1px solid #CBD5E1',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    textAlign: 'center',
+                  }}
+                />
+                <button
+                  onClick={() => handleResetPin(m.id, pinReset.newPin)}
+                  disabled={pinReset.newPin.length !== 4 || pinReset.saving}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: pinReset.newPin.length === 4 ? '#16A34A' : '#D1D5DB',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: pinReset.newPin.length === 4 ? 'pointer' : 'default',
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setPinReset({ milkmanId: null, newPin: '', saving: false, success: null })}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: '#E2E8F0',
+                    color: '#64748B',
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setPinReset({ milkmanId: m.id, newPin: '', saving: false, success: null })}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  border: '2px solid #93C5FD',
+                  background: '#EFF6FF',
+                  color: '#2563EB',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Reset PIN
+              </button>
+            )}
+          </div>
+        ))}
 
         {/* Absence Management */}
         <h2 style={{
