@@ -14,7 +14,7 @@ export default function Stepper({
   value,
   onChange,
   min = 0,
-  max = 999,
+  max = 999999,
   disabled = false,
 }: StepperProps) {
   const [typing, setTyping] = React.useState(false)

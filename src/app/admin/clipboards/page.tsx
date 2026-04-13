@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import { dateStr } from '@/lib/helpers/date'
 import { milkmanStatus } from '@/lib/helpers/clipboard'
 import { calculateSold } from '@/lib/helpers/clipboard'
+import { clampBroughtBack } from '@/lib/helpers/clipboard'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 interface MilkmanInfo {
@@ -39,6 +40,12 @@ interface StatusInfo {
   submitted: boolean
 }
 
+interface DraftEntry {
+  out: number
+  back: number
+  waste: number
+}
+
 export default function ClipboardsPage() {
   const router = useRouter()
   const { isAdmin, loading: authLoading } = useAdmin()
@@ -51,6 +58,15 @@ export default function ClipboardsPage() {
   const [statuses, setStatuses] = useState<StatusInfo[]>([])
   const [absentIds, setAbsentIds] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [draftEntries, setDraftEntries] = useState<Record<string, DraftEntry>>({})
+  const [savingMilkmanId, setSavingMilkmanId] = useState<string | null>(null)
+  const [savingAll, setSavingAll] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState(today)
+  const [dayClosed, setDayClosed] = useState(false)
+  const [dayStatusBusy, setDayStatusBusy] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -58,11 +74,12 @@ export default function ClipboardsPage() {
   }, [isAdmin, authLoading, router])
 
   useEffect(() => {
-    if (isAdmin) loadData()
+    if (isAdmin) loadData(selectedDate)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin])
+  }, [isAdmin, selectedDate])
 
-  const loadData = async () => {
+  const loadData = async (forDate: string) => {
+    setLoading(true)
     const { data: milkmenData } = await supabase
       .from('milkmen')
       .select('id, name')
@@ -82,25 +99,33 @@ export default function ClipboardsPage() {
     const { data: entriesData } = await supabase
       .from('clipboard_entries')
       .select('milkman_id, product_id, out, back, waste, morning_out')
-      .eq('date', today)
+      .eq('date', forDate)
 
     if (entriesData) setEntries(entriesData)
 
     const { data: statusData } = await supabase
       .from('clipboard_status')
       .select('milkman_id, headed_out, submitted')
-      .eq('date', today)
+      .eq('date', forDate)
 
     if (statusData) setStatuses(statusData)
 
     const { data: absenceData } = await supabase
       .from('absences')
       .select('milkman_id')
-      .eq('date', today)
+      .eq('date', forDate)
 
     if (absenceData) {
       setAbsentIds(new Set(absenceData.map((a) => a.milkman_id)))
     }
+
+    const { data: dayData } = await supabase
+      .from('day_status')
+      .select('closed')
+      .eq('date', forDate)
+      .maybeSingle()
+
+    setDayClosed(!!dayData?.closed)
 
     setLoading(false)
   }
@@ -133,6 +158,243 @@ export default function ClipboardsPage() {
     router.push(`/admin/${id}`)
   }
 
+  const entryKey = (milkmanId: string, productId: string) => `${milkmanId}:${productId}`
+
+  const getExistingEntry = (milkmanId: string, productId: string) =>
+    entries.find((e) => e.milkman_id === milkmanId && e.product_id === productId)
+
+  const normalizeEntry = (out: number, backRaw: number, wasteRaw: number): DraftEntry => {
+    const back = clampBroughtBack(backRaw, out)
+    const waste = Math.min(Math.max(0, wasteRaw), Math.max(0, out - back))
+    return { out, back, waste }
+  }
+
+  const getEffectiveEntry = (milkmanId: string, productId: string): DraftEntry => {
+    const key = entryKey(milkmanId, productId)
+    const existing = getExistingEntry(milkmanId, productId)
+    const draft = draftEntries[key]
+    return normalizeEntry(
+      draft?.out ?? existing?.out ?? 0,
+      draft?.back ?? existing?.back ?? 0,
+      draft?.waste ?? existing?.waste ?? 0
+    )
+  }
+
+  const hasUnsavedChangesForMilkman = (milkmanId: string) => {
+    for (const product of products) {
+      const key = entryKey(milkmanId, product.id)
+      if (!draftEntries[key]) continue
+      const existing = getExistingEntry(milkmanId, product.id)
+      const current = normalizeEntry(existing?.out ?? 0, existing?.back ?? 0, existing?.waste ?? 0)
+      const effective = getEffectiveEntry(milkmanId, product.id)
+      if (
+        effective.out !== current.out ||
+        effective.back !== current.back ||
+        effective.waste !== current.waste
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
+  const hasAnyUnsavedChanges = useMemo(
+    () => workingMilkmen.some((m) => hasUnsavedChangesForMilkman(m.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workingMilkmen, draftEntries, entries, products]
+  )
+
+  const updateDraftValue = (
+    milkmanId: string,
+    productId: string,
+    field: keyof DraftEntry,
+    nextValue: number
+  ) => {
+    const key = entryKey(milkmanId, productId)
+    const existing = getExistingEntry(milkmanId, productId)
+    const base = draftEntries[key] || {
+      out: existing?.out || 0,
+      back: existing?.back || 0,
+      waste: existing?.waste || 0,
+    }
+    const updated = { ...base, [field]: nextValue }
+
+    if (field === 'out') {
+      updated.back = clampBroughtBack(updated.back, updated.out)
+      const maxWaste = updated.out - updated.back
+      if (updated.waste > maxWaste) updated.waste = Math.max(0, maxWaste)
+    }
+
+    if (field === 'back') {
+      updated.back = clampBroughtBack(updated.back, updated.out)
+      const maxWaste = updated.out - updated.back
+      if (updated.waste > maxWaste) updated.waste = Math.max(0, maxWaste)
+    }
+
+    if (field === 'waste') {
+      const maxWaste = Math.max(0, updated.out - updated.back)
+      if (updated.waste > maxWaste) updated.waste = maxWaste
+    }
+
+    const current = normalizeEntry(existing?.out ?? 0, existing?.back ?? 0, existing?.waste ?? 0)
+    const normalizedUpdated = normalizeEntry(updated.out, updated.back, updated.waste)
+    setDraftEntries((prev) => {
+      const next = { ...prev }
+      if (
+        normalizedUpdated.out === current.out &&
+        normalizedUpdated.back === current.back &&
+        normalizedUpdated.waste === current.waste
+      ) {
+        delete next[key]
+      } else {
+        next[key] = normalizedUpdated
+      }
+      return next
+    })
+  }
+
+  const buildUpsertsForMilkman = (milkmanId: string) =>
+    products
+      .map((product) => {
+        const existing = getExistingEntry(milkmanId, product.id)
+        const effective = getEffectiveEntry(milkmanId, product.id)
+        const shouldPersist = !!existing || effective.out > 0 || effective.back > 0 || effective.waste > 0
+        if (!shouldPersist) return null
+        return {
+          milkman_id: milkmanId,
+          product_id: product.id,
+          date: selectedDate,
+          out: effective.out,
+          back: effective.back,
+          waste: effective.waste,
+          morning_out: existing?.morning_out ?? null,
+          updated_at: new Date().toISOString(),
+        }
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+
+  const clearDraftsForMilkman = (milkmanId: string) => {
+    setDraftEntries((prev) => {
+      const next = { ...prev }
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${milkmanId}:`)) delete next[key]
+      }
+      return next
+    })
+  }
+
+  const handleSaveMilkman = async (milkmanId: string) => {
+    setSavingMilkmanId(milkmanId)
+    setSaveMessage(null)
+    setSaveError(null)
+    try {
+      const upserts = buildUpsertsForMilkman(milkmanId)
+      if (upserts.length > 0) {
+        const { error } = await supabase
+          .from('clipboard_entries')
+          .upsert(upserts, { onConflict: 'milkman_id,product_id,date' })
+        if (error) throw error
+      }
+
+      const hasReturnedFigures = upserts.some((row) => row.back > 0 || row.waste > 0)
+      if (hasReturnedFigures) {
+        const { error: statusError } = await supabase
+          .from('clipboard_status')
+          .upsert({
+            milkman_id: milkmanId,
+            date: selectedDate,
+            headed_out: true,
+            submitted: true,
+            submitted_at: new Date().toISOString(),
+          }, { onConflict: 'milkman_id,date' })
+        if (statusError) throw statusError
+      }
+
+      setEntries((prev) => {
+        const withoutMilkman = prev.filter((e) => e.milkman_id !== milkmanId)
+        return [...withoutMilkman, ...upserts]
+      })
+      clearDraftsForMilkman(milkmanId)
+      await loadData(selectedDate)
+      setSaveMessage('Changes saved')
+      const now = new Date()
+      setLastSavedAt(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error'
+      setSaveError(`Could not save changes: ${detail}`)
+    } finally {
+      setSavingMilkmanId(null)
+    }
+  }
+
+  const handleSaveAll = async () => {
+    setSavingAll(true)
+    setSaveMessage(null)
+    setSaveError(null)
+    try {
+      const toSave = workingMilkmen.filter((m) => hasUnsavedChangesForMilkman(m.id))
+      for (const milkman of toSave) {
+        const upserts = buildUpsertsForMilkman(milkman.id)
+        if (upserts.length > 0) {
+          const { error } = await supabase
+            .from('clipboard_entries')
+            .upsert(upserts, { onConflict: 'milkman_id,product_id,date' })
+          if (error) throw error
+        }
+        const hasReturnedFigures = upserts.some((row) => row.back > 0 || row.waste > 0)
+        if (hasReturnedFigures) {
+          const { error: statusError } = await supabase
+            .from('clipboard_status')
+            .upsert({
+              milkman_id: milkman.id,
+              date: selectedDate,
+              headed_out: true,
+              submitted: true,
+              submitted_at: new Date().toISOString(),
+            }, { onConflict: 'milkman_id,date' })
+          if (statusError) throw statusError
+        }
+        setEntries((prev) => {
+          const withoutMilkman = prev.filter((e) => e.milkman_id !== milkman.id)
+          return [...withoutMilkman, ...upserts]
+        })
+        clearDraftsForMilkman(milkman.id)
+      }
+      await loadData(selectedDate)
+      setSaveMessage(toSave.length > 0 ? `Saved changes for ${toSave.length} rounds` : 'No unsaved changes')
+      if (toSave.length > 0) {
+        const now = new Date()
+        setLastSavedAt(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`)
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error'
+      setSaveError(`Save all failed: ${detail}`)
+    } finally {
+      setSavingAll(false)
+    }
+  }
+
+  const handleReopenDay = async () => {
+    setDayStatusBusy(true)
+    setSaveError(null)
+    setSaveMessage(null)
+    const { error } = await supabase
+      .from('day_status')
+      .upsert({
+        date: selectedDate,
+        closed: false,
+        closed_at: null,
+      }, { onConflict: 'date' })
+    if (error) {
+      setSaveError(`Could not reopen day: ${error.message}`)
+      setDayStatusBusy(false)
+      return
+    }
+    setDayClosed(false)
+    setSaveMessage(`Day reopened for ${selectedDate}`)
+    setDayStatusBusy(false)
+  }
+
   if (authLoading || loading) {
     return (
       <div style={{
@@ -153,11 +415,94 @@ export default function ClipboardsPage() {
           fontSize: 32,
           fontWeight: 800,
           color: '#1E3A5F',
-          margin: '0 0 24px',
+          margin: '0 0 12px',
           letterSpacing: '-0.02em',
         }}>
-          Today&apos;s Clipboards
+          Clipboards
         </h1>
+        <div style={{ marginBottom: 12 }}>
+          <label
+            htmlFor="clipboard-date"
+            style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#64748B', marginBottom: 4 }}
+          >
+            Edit date
+          </label>
+          <input
+            id="clipboard-date"
+            type="date"
+            value={selectedDate}
+            onChange={(e) => {
+              setSaveMessage(null)
+              setSaveError(null)
+              setDraftEntries({})
+              setExpanded(null)
+              setSelectedDate(e.target.value)
+            }}
+            style={{
+              border: '1px solid #CBD5E1',
+              borderRadius: 8,
+              padding: '8px 10px',
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#1E293B',
+              background: '#fff',
+            }}
+          />
+        </div>
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          {dayClosed ? (
+            <button
+              onClick={handleReopenDay}
+              disabled={dayStatusBusy}
+              style={{
+                border: 'none',
+                borderRadius: 8,
+                background: '#16A34A',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 13,
+                padding: '8px 12px',
+                cursor: dayStatusBusy ? 'default' : 'pointer',
+                opacity: dayStatusBusy ? 0.6 : 1,
+              }}
+            >
+              {dayStatusBusy ? 'Reopening...' : 'Reopen Day'}
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#16A34A' }}>
+              Day is open
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: hasAnyUnsavedChanges ? '#B45309' : '#64748B' }}>
+              {hasAnyUnsavedChanges ? 'You have unsaved round edits' : 'All round changes saved'}
+            </span>
+            {lastSavedAt && (
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#64748B', margin: '2px 0 0' }}>
+                Last saved at {lastSavedAt}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={handleSaveAll}
+            disabled={!hasAnyUnsavedChanges || savingAll || !!savingMilkmanId}
+            style={{
+              border: 'none',
+              borderRadius: 8,
+              background: '#0F766E',
+              color: '#fff',
+              fontWeight: 800,
+              fontSize: 13,
+              padding: '8px 12px',
+              cursor: !hasAnyUnsavedChanges || savingAll || !!savingMilkmanId ? 'default' : 'pointer',
+              opacity: !hasAnyUnsavedChanges || savingAll || !!savingMilkmanId ? 0.6 : 1,
+            }}
+          >
+            {savingAll ? 'Saving all...' : 'Save all changes'}
+          </button>
+        </div>
 
         {/* Accordion list */}
         {workingMilkmen.map((m) => {
@@ -165,6 +510,7 @@ export default function ClipboardsPage() {
           const milkmanEntries = entries.filter((e) => e.milkman_id === m.id)
           const hasData = milkmanEntries.some((e) => e.out > 0)
           const isExpanded = expanded === m.id
+          const hasUnsaved = hasUnsavedChangesForMilkman(m.id)
 
           const displayStatus = milkmanStatus(
             status?.submitted || false,
@@ -202,6 +548,19 @@ export default function ClipboardsPage() {
                   <span style={{ fontSize: 20, fontWeight: 800, color: '#1E3A5F' }}>
                     {m.name}
                   </span>
+                  {hasUnsaved && (
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: '#92400E',
+                      background: '#FEF3C7',
+                      border: '1px solid #FCD34D',
+                      borderRadius: 999,
+                      padding: '2px 8px',
+                    }}>
+                      UNSAVED
+                    </span>
+                  )}
                   {isExpanded ? (
                     <ChevronUp size={20} color="#94A3B8" />
                   ) : (
@@ -216,9 +575,11 @@ export default function ClipboardsPage() {
                 <div style={{ background: '#F8FAFC', padding: '0 20px 16px' }}>
                   {products.map((product, idx) => {
                     const entry = milkmanEntries.find((e) => e.product_id === product.id)
-                    const out = entry?.out || 0
-                    const back = entry?.back || 0
-                    const waste = entry?.waste || 0
+                    const key = entryKey(m.id, product.id)
+                    const draft = draftEntries[key]
+                    const out = draft?.out ?? entry?.out ?? 0
+                    const back = draft?.back ?? entry?.back ?? 0
+                    const waste = draft?.waste ?? entry?.waste ?? 0
                     const sold = calculateSold(out, back, waste)
                     const morningValue = entry?.morning_out
                     const isEdited = morningValue !== null && morningValue !== undefined && out !== morningValue
@@ -273,6 +634,74 @@ export default function ClipboardsPage() {
                           )}
                           <span style={{ color: '#16A34A' }}>Sold: <strong>{sold}</strong></span>
                         </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                              Out
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={out}
+                              onChange={(e) => updateDraftValue(m.id, product.id, 'out', Math.max(0, Number(e.target.value) || 0))}
+                              style={{
+                                width: 72,
+                                border: '1px solid #CBD5E1',
+                                borderRadius: 8,
+                                padding: '6px 8px',
+                                fontSize: 14,
+                                fontWeight: 700,
+                                color: '#1E293B',
+                                background: '#fff',
+                              }}
+                              aria-label={`${m.name} ${product.name} out`}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                              Back
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={back}
+                              onChange={(e) => updateDraftValue(m.id, product.id, 'back', Math.max(0, Number(e.target.value) || 0))}
+                              style={{
+                                width: 72,
+                                border: '1px solid #CBD5E1',
+                                borderRadius: 8,
+                                padding: '6px 8px',
+                                fontSize: 14,
+                                fontWeight: 700,
+                                color: '#1E293B',
+                                background: '#fff',
+                              }}
+                              aria-label={`${m.name} ${product.name} back`}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                              Waste
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={waste}
+                              onChange={(e) => updateDraftValue(m.id, product.id, 'waste', Math.max(0, Number(e.target.value) || 0))}
+                              style={{
+                                width: 72,
+                                border: '1px solid #CBD5E1',
+                                borderRadius: 8,
+                                padding: '6px 8px',
+                                fontSize: 14,
+                                fontWeight: 700,
+                                color: '#1E293B',
+                                background: '#fff',
+                              }}
+                              aria-label={`${m.name} ${product.name} waste`}
+                            />
+                          </label>
+                        </div>
                         {isEdited && morningValue !== null && (
                           <p style={{
                             fontSize: 13,
@@ -287,11 +716,44 @@ export default function ClipboardsPage() {
                       </div>
                     )
                   })}
+                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B' }}>
+                      Edit values then save for {m.name}
+                    </span>
+                    <button
+                      onClick={() => handleSaveMilkman(m.id)}
+                      disabled={savingMilkmanId === m.id || savingAll}
+                      style={{
+                        border: 'none',
+                        borderRadius: 8,
+                        background: '#2563EB',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 13,
+                        padding: '8px 12px',
+                        cursor: savingMilkmanId === m.id || savingAll ? 'default' : 'pointer',
+                        opacity: savingMilkmanId === m.id || savingAll ? 0.6 : 1,
+                      }}
+                    >
+                      {savingMilkmanId === m.id ? 'Saving...' : 'Save changes'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           )
         })}
+
+        {saveMessage && (
+          <p style={{ fontSize: 13, color: '#166534', fontWeight: 700, marginTop: 8 }}>
+            {saveMessage}
+          </p>
+        )}
+        {saveError && (
+          <p style={{ fontSize: 13, color: '#B91C1C', fontWeight: 700, marginTop: 8 }}>
+            {saveError}
+          </p>
+        )}
 
         {/* Daily Totals */}
         <div style={{
