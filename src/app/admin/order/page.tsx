@@ -235,6 +235,7 @@ export default function OrderPage() {
                   Your Order:
                 </span>
                 <Stepper
+                  max={3000}
                   value={getOrderQty(product.id)}
                   onChange={(v) => setOrderOverrides((prev) => ({ ...prev, [product.id]: v }))}
                 />
