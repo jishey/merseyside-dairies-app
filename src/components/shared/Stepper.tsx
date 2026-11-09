@@ -70,7 +70,7 @@ export default function Stepper({
           if (e.key === 'Enter') e.currentTarget.blur()
         }}
         style={{
-          width: 72,
+          width: 92,
           textAlign: 'center',
           fontSize: 28,
           fontWeight: 800,
