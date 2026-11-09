@@ -34,7 +34,14 @@ export default function TargetsPage() {
 
   const [products, setProducts] = useState<ProductInfo[]>([])
   const [selectedDay, setSelectedDay] = useState('mon')
-  const [targets, setTargets] = useState<Record<string, number>>({})
+  // Targets for every day, kept in memory so switching day tabs doesn't lose unsaved edits
+  const [allTargets, setAllTargets] = useState<Record<string, Record<string, number>>>({})
+  const targets = allTargets[selectedDay] || {}
+  const setTarget = (productId: string, v: number) =>
+    setAllTargets((prev) => ({
+      ...prev,
+      [selectedDay]: { ...(prev[selectedDay] || {}), [productId]: v },
+    }))
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -49,7 +56,7 @@ export default function TargetsPage() {
   useEffect(() => {
     if (isAdmin) loadTargets()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDay, isAdmin])
+  }, [isAdmin])
 
   const loadProducts = async () => {
     const { data } = await supabase
@@ -64,24 +71,29 @@ export default function TargetsPage() {
   const loadTargets = async () => {
     const { data } = await supabase
       .from('stock_targets')
-      .select('product_id, target')
-      .eq('day_of_week', selectedDay)
+      .select('product_id, day_of_week, target')
 
-    const tMap: Record<string, number> = {}
+    const all: Record<string, Record<string, number>> = {}
     if (data) {
-      for (const t of data) tMap[t.product_id] = t.target
+      for (const t of data) {
+        if (!all[t.day_of_week]) all[t.day_of_week] = {}
+        all[t.day_of_week][t.product_id] = t.target
+      }
     }
-    setTargets(tMap)
+    setAllTargets(all)
   }
 
   const handleSave = async () => {
     setSaving(true)
 
-    const upserts = products.map((p) => ({
-      product_id: p.id,
-      day_of_week: selectedDay,
-      target: targets[p.id] || 0,
-    }))
+    // Save every day at once, so edits made on other day tabs are kept too
+    const upserts = DAYS.flatMap((d) =>
+      products.map((p) => ({
+        product_id: p.id,
+        day_of_week: d.key,
+        target: allTargets[d.key]?.[p.id] || 0,
+      }))
+    )
 
     await supabase
       .from('stock_targets')
@@ -180,7 +192,7 @@ export default function TargetsPage() {
             </div>
             <Stepper
               value={targets[product.id] || 0}
-              onChange={(v) => setTargets((prev) => ({ ...prev, [product.id]: v }))}
+              onChange={(v) => setTarget(product.id, v)}
             />
           </div>
         ))}
